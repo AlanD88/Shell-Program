@@ -1,0 +1,182 @@
+The myshell program takes a char array of strings **input, **cmd_set, and an int array pipe_pos are initially initialized.
+input is set equal to the function getline() within the main
+while loop.
+
+The program should initially look for built-in shell commands, the string "exit" which upon seeing should call exit(0) and exit.
+and the string "cd" with or without arguments following it and possible with "$home" called following.
+On cases with no following arguments or variation of "home", the function chdir() is called with param getenv("HOME")
+otherwise chdir() is called passing the following argument for "cd" as its argument.
+If chdir() returns not 0, perror() should be called to signal the issue.
+
+If none of these built in commands are called and input[0] != NULL.  you should 
+initialize an int variable to represent the number of commands in the string input.
+To account for the number of commands you process the input string with a for loop which can also track 
+the positions for the pipes and append them to pipe_pos array and if the command has any i/O redirection
+
+
+int numcommands = 0  //numcommands starts at 0 to conveniently use as an index for pipe_pos
+int pipe_pos[]
+bool out = False
+bool in = False
+
+for (i -> 0; input[i] != NULL; i++){
+	if (input[i] == "|"){
+		pipe_pos[numcommands] = i;
+		numcommands++;
+	}
+	if (input[i] == ">"){
+		out = True
+	}
+	if (inptut[i] == "<"){
+		in = True
+	}
+}
+numcommands++ // add one after finished to get true total number of arguments.
+
+after we gather the number of commands we check to see if it is 1 or more.
+If it is one, we run a seperate if statement where fork() can be called without piping.
+We initialize a set of variables 
+pid_t pid 
+int status, in, out, pos
+
+After initializing these variables we call the function pid = fork()
+If fork() return < 0 we call perror(), if it's > 0 we create a while statement
+
+while(wait(&status) != pid){
+}
+
+if pid equals 0, we run our command.
+
+First check for input or output, if either are true open the corresponding files and run them through dup2()
+
+if ('<' == True){
+	pos =  Check_Input(input);
+	in = open(input[pos+1], O_RDONLY);
+	if (in < 0) {
+		perror("Error");
+		exit(1);
+	}
+	dup2(in, 0);
+	close(in);
+}
+if ('>' == True) {
+	pos = Check_Output(input)
+	out = open(input[pos+1], O_WRONLY | O_TRUNC | O_CREAT, 0644);
+	if (out < 0) {
+		perror("Error");
+		exit(1);
+	}
+	dup2(out, 0);
+	close(out);
+}
+
+The functions Check_Input(string []) and Check_Ouput(string [])
+are similarly constructed to return the index position of the i/o redirection operators as so:
+int Check_Input(char **array) {
+
+	for(int i = 0; array[i] != NULL; i++) {
+		if(array[i] == "<") {
+			return i;
+		}
+	}
+	return -1; //-1 is returned if no i/o operator is found
+}
+
+Check_Output is constructed precisely the same way, except the comparison in the single if statement is defined as follows
+	if (array[i] == ">")
+
+After, if these are opened, you then build a simple command argument list.
+iterating through a loop setting cmd_set[i] = input[i], upon enountering any i/o symbol < or >
+cmd_set[i] should be set equal NULL and the loop broken as the new list has been filled with its needed arguments.
+This prevents input cases such as:
+cat file1 > file2 > file3 > file4
+ from running in a confusing manner.
+Traditionally such a statement would copy the countents of file1 to file4, leaving file2 and file3 created but blank.
+When the user would assume to expect the content of file1 to be copied to all 3 new files.
+In myshell when this command is run, it ignores all additional > operators after the first.  copying the contents
+of file1 to the next immediate file which would be file2 in this example.  file3 and file 4 are not created at all
+preventing users from assuming seeing their creation that the copying worked properly when it wouldn't have.
+
+after this you run the function
+execvp(cmd_set[0], cmd_set)
+if the function returns < 0 call perror() and exit(1);
+
+When more than one argument is present
+  we first check to if there are 2 arguments, this allowed to run a simple case.
+2 pid_t variables are created, followed by 2 string arrays to hold the arguments of both commands.
+
+These arrays are constructed in a single for loop using additionally the original char input array and int pipe_pos array, created 
+at the beginning of the program.  The for loop iterates through input, initially filling the first argument array, and then once it hits
+the index of the pipe symbol "|", it NULL terminates the first argument array and then switches over to filling the 2nd argument array.
+
+char **cmd_one[];
+char **cmd_two[];
+int tmp = 0;
+for (int i = 0; input[i] != NULL; i++){
+	if (i < pipe_pos[0] && input[i] != "<" && input[i] != ">")
+		cmd_one[tmp] = input[i];
+		tmp++;
+	else if (i == pipe_pos[0])
+		cmd_one[i] = NULL;
+		tmp = 0;  //tmp must be reset so the second arg array is filled starting from its index 0
+	else if (i > pipe_pos[0] && input[i] != "<" && input[i] != ">")
+		cmd_two[tmp] = input[i];
+		tmp++;
+	else if (input[i] == ">")
+		output = True;
+	else if (input[i] == "<")
+		input = True
+}
+
+After constructing the 2 argument array.
+You pass by 2 if statements checking if either input or output is True.
+If they are, you open the corresponding files, checking for standard error and calling exit(1) if the functions don't work.
+
+Once all that completes successfully we create our pipes, checking for standard error.
+the function fork() is called, and if you're in the child process, you call dup2()
+passing (pipes[1], 1); through the function to replace standard input.
+Then close the opposite pipe.
+
+After that you call function execvp and pass the 1st element of cmd_one and the whole string.  checking for standard error.
+if you are in the parent process, you call fork() once more, and if you're in the child process
+you call dup2(pipes[0], 0) and close the opposing pipe pipes[1]. After that you call execvp passing the first element in cmd_two, along with the whole array.  checking 
+for standard erro.
+If you are in that childs parent, you close all files and pipes.
+
+If you are in the top level parent, you will call function wait within a while loop
+
+while(wait(&status) != pid){
+}
+
+if you have more than 2 arguments, you will call the function run_cmd() recursively to 
+iterate through each command and process them.
+This is done after creating a fork and calling it within the child process, leaving the parent
+to run the wait() function just as before.
+run_cmd takes 3 arguments: 
+numcommands //the number of commands
+pipe_pos // the index of each pipe in the input array
+input // the string array containing all arguments
+
+in run_cmd you'll initialize a pid_t variable, a string array, an start and end int variable,
+and tmp int variable and a second command count variable x
+
+after that you first initialize x to the total command count by using a for loop
+on pipe_pos to get the number of total arguments
+You then check to see if this is the first argument being run. by checking the difference between x and numcommands
+if it is, set start equal to 0 and end equal to first index of pipe_pos.
+if it's not the first run start will equal to (pipe_pos[(x - numcommands) - 1]) + 1
+and end will equal to pipe_pos[x - numcommands]
+
+after getting these positions you buld your command string for that process
+
+for (int i = start; i < end; i++){
+	command[tmp] = input[i];
+	tmp++;
+}
+command[tmp] = NULL; //make sure end of string is NULL terminated
+
+Then we check to see if numcommands > 0
+
+if it is, handle our i/o redirection, create our pipes, and then fork.  Calling the function within the child 
+like so run_cmd(numcommands - 1, pipe_pos, input);
+if we're in the parent process, we call dup2() and execute execvp(command[0], command)
